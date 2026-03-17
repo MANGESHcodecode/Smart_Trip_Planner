@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Plan a Trip — TripYatra</title>
+<link rel="stylesheet" href="/styles.css"/>
+<style>
+  .page-wrap { max-width: 1100px; margin: 0 auto; padding: 40px 24px 80px; }
+  .page-header { margin-bottom: 36px; animation: fadeUp 0.3s ease; }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:none} }
+  .page-header h1 { font-size: 2rem; font-weight: 800; letter-spacing: -0.5px; }
+  .page-header p { color: var(--text2); margin-top: 6px; }
+  .back-link { display:inline-flex; align-items:center; gap:6px; color:var(--text2); font-size:0.85rem; text-decoration:none; margin-bottom:24px; transition:color 0.2s; }
+  .back-link:hover { color:var(--text); }
+
+  /* Plan form */
+  .plan-form-card { background:var(--surface); border:1px solid var(--border); border-radius:20px; padding:32px; margin-bottom:40px; animation: fadeUp 0.35s ease; }
+  .plan-form-card h2 { font-size:1.1rem; font-weight:700; margin-bottom:24px; display:flex; align-items:center; gap:10px; }
+
+  /* ── Train Results ── */
+  .results-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+  .results-title { font-family:'Syne',sans-serif; font-size:1.2rem; font-weight:800; }
+  .train-count { background:var(--surface2); border:1px solid var(--border); border-radius:20px; padding:4px 14px; font-size:0.8rem; color:var(--text2); }
+
+  /* Train card — IRCTC style */
+  .train-card {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:16px; overflow:hidden; margin-bottom:16px;
+    animation: fadeUp 0.3s ease both; transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .train-card:hover { border-color: var(--border2); box-shadow: 0 6px 24px rgba(0,0,0,0.3); }
+
+  /* Card header */
+  .tc-head { padding:18px 22px 14px; display:flex; align-items:flex-start; justify-content:space-between; border-bottom:1px solid var(--border); }
+  .tc-name { font-family:'Syne',sans-serif; font-size:1.05rem; font-weight:800; }
+  .tc-number { font-size:0.78rem; color:var(--text3); font-family:monospace; margin-top:3px; letter-spacing:0.8px; }
+
+  /* Route strip */
+  .tc-route { padding:20px 22px; display:flex; align-items:center; gap:0; border-bottom:1px solid var(--border); }
+  .tc-station { min-width:130px; }
+  .tc-time { font-family:'Syne',sans-serif; font-size:1.5rem; font-weight:800; line-height:1; }
+  .tc-stn-name { font-size:0.78rem; color:var(--text2); margin-top:4px; }
+  .tc-stn-code { font-size:0.7rem; color:var(--text3); font-family:monospace; margin-top:1px; }
+  .tc-route-mid { flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; padding:0 12px; }
+  .tc-duration { font-size:0.78rem; color:var(--accent); font-weight:600; }
+  .tc-line { width:100%; display:flex; align-items:center; gap:0; }
+  .tc-dot { width:8px; height:8px; border-radius:50%; background:var(--accent); flex-shrink:0; }
+  .tc-track { flex:1; height:2px; background:linear-gradient(90deg,var(--accent),var(--blue)); }
+  .tc-days { font-size:0.7rem; color:var(--text3); }
+  .tc-station.right { text-align:right; }
+
+  /* Classes grid */
+  .tc-classes { padding:14px 22px; display:flex; gap:8px; flex-wrap:wrap; border-bottom:1px solid var(--border); }
+  .cls-box {
+    flex:1; min-width:72px; max-width:110px;
+    background:var(--surface2); border:1px solid var(--border);
+    border-radius:10px; padding:10px 8px; text-align:center; cursor:pointer;
+    transition:all 0.18s;
+  }
+  .cls-box:hover { border-color:var(--accent); background:rgba(249,115,22,0.06); }
+  .cls-box.selected { border-color:var(--accent); background:rgba(249,115,22,0.1); }
+  .cls-name { font-size:0.72rem; color:var(--text2); text-transform:uppercase; letter-spacing:0.5px; font-weight:600; }
+  .cls-fare { font-family:'Syne',sans-serif; font-size:1rem; font-weight:800; margin:4px 0 2px; }
+  .cls-avail { font-size:0.68rem; font-weight:600; }
+  .avail-ok   { color:var(--green); }
+  .avail-few  { color:var(--yellow); }
+  .avail-wl   { color:var(--red); }
+
+  /* Card footer */
+  .tc-footer { padding:12px 22px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .tc-info { display:flex; gap:16px; }
+  .tc-info-item { font-size:0.75rem; color:var(--text2); display:flex; align-items:center; gap:4px; }
+
+  /* Loading state */
+  .ai-loading { text-align:center; padding:60px 20px; color:var(--text2); }
+  .ai-loading .loader-ring {
+    width:52px; height:52px; border:3px solid var(--border);
+    border-top-color:var(--accent); border-radius:50%;
+    animation:spin 0.8s linear infinite; margin:0 auto 20px;
+  }
+  @keyframes spin { to{transform:rotate(360deg)} }
+  .ai-loading p { font-size:0.9rem; }
+  .ai-loading small { font-size:0.78rem; color:var(--text3); display:block; margin-top:6px; }
+</style>
+</head>
+<body>
+<div id="navbar"></div>
+
+<div class="page-wrap">
+  <a href="/dashboard.html" class="back-link">← Back to Dashboard</a>
+
+  <div class="page-header">
+    <h1>🗺️ Plan a Trip</h1>
+    <p>Enter your journey details and we'll find the best trains using AI.</p>
+  </div>
+
+  <!-- Form -->
+  <div class="plan-form-card">
+    <h2>🔍 Journey Details</h2>
+    <div class="form-row">
+      <div class="form-group">
+        <label>From (Source City/Station)</label>
+        <input class="form-control" id="source" type="text" placeholder="e.g. Mumbai" list="city-list"/>
+      </div>
+      <div class="form-group">
+        <label>To (Destination City/Station)</label>
+        <input class="form-control" id="destination" type="text" placeholder="e.g. Delhi" list="city-list"/>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Date of Journey</label>
+        <input class="form-control" id="journeyDate" type="date" min=""/>
+      </div>
+      <div class="form-group">
+        <label>Number of Travellers</label>
+        <input class="form-control" id="travellers" type="number" min="1" max="6" value="1"/>
+      </div>
+      <div class="form-group">
+        <label>Budget (₹ per person, optional)</label>
+        <input class="form-control" id="budget" type="number" placeholder="e.g. 2000"/>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Trip Notes (optional)</label>
+      <input class="form-control" id="notes" type="text" placeholder="e.g. Family vacation, need lower berths"/>
+    </div>
+
+    <datalist id="city-list">
+      <option value="Mumbai"/><option value="Delhi"/><option value="Kolkata"/>
+      <option value="Chennai"/><option value="Bangalore"/><option value="Hyderabad"/>
+      <option value="Pune"/><option value="Ahmedabad"/><option value="Jaipur"/>
+      <option value="Lucknow"/><option value="Patna"/><option value="Bhopal"/>
+      <option value="Nagpur"/><option value="Surat"/><option value="Kochi"/>
+      <option value="Goa"/><option value="Varanasi"/><option value="Agra"/>
+      <option value="Amritsar"/><option value="Chandigarh"/><option value="Coimbatore"/>
+    </datalist>
+
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px">
+      <button class="btn btn-primary btn-lg" id="searchBtn" onclick="searchTrains()" style="flex:1;min-width:200px">
+        🔍 Search Trains with AI
+      </button>
+      <button class="btn btn-ghost btn-lg" id="saveOnlyBtn" onclick="saveTripOnly()" style="padding:14px 20px">
+        💾 Save Trip
+      </button>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="trainResults"></div>
+</div>
+
+<script src="/app.js"></script>
+<script>
+  if (!Auth.requireAuth()) throw new Error();
+  renderNavbar('plan-trip');
+  document.getElementById('journeyDate').min = todayISO();
+  document.getElementById('journeyDate').value = todayISO();
+
+  async function searchTrains() {
+    const source      = document.getElementById('source').value.trim();
+    const destination = document.getElementById('destination').value.trim();
+    const date        = document.getElementById('journeyDate').value;
+    const travellers  = parseInt(document.getElementById('travellers').value) || 1;
+    const budget      = document.getElementById('budget').value;
+    const notes       = document.getElementById('notes').value;
+
+    if (!source || !destination) { showToast('Please enter source and destination', 'error'); return; }
+    if (!date) { showToast('Please select a journey date', 'error'); return; }
+
+    const btn = document.getElementById('searchBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> AI is fetching trains...';
+
+    document.getElementById('trainResults').innerHTML = `
+      <div class="ai-loading">
+        <div class="loader-ring"></div>
+        <p>Finding best trains from <strong>${source}</strong> to <strong>${destination}</strong></p>
+        <small>Powered by OpenAI · This takes a few seconds</small>
+      </div>`;
+
+    // Track searches in localStorage
+    const s = parseInt(localStorage.getItem('ty_searches') || 0);
+    localStorage.setItem('ty_searches', s + 1);
+
+    try {
+      const data = await api.post('/trains/search', { source, destination, date, travellers });
+
+      // Auto-save trip
+      try {
+        await api.post('/trips', { source, destination, date, travellers, budget, notes, title: `${source} → ${destination}` });
+        showToast('Trip saved to your dashboard!', 'success');
+      } catch {}
+
+      renderTrains(data.trains, source, destination, date, travellers);
+    } catch(e) {
+      document.getElementById('trainResults').innerHTML = `
+        <div style="background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.25);border-radius:14px;padding:24px;text-align:center;color:var(--red)">
+          <div style="font-size:1.5rem;margin-bottom:8px">⚠️</div>
+          <p>${e.message}</p>
+          <p style="font-size:0.8rem;color:var(--text3);margin-top:6px">Make sure your OpenAI API key is set in backend/.env</p>
+        </div>`;
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '🔍 Search Trains with AI';
+    }
+  }
+
+  async function saveTripOnly() {
+    const source      = document.getElementById('source').value.trim();
+    const destination = document.getElementById('destination').value.trim();
+    const date        = document.getElementById('journeyDate').value;
+    const travellers  = parseInt(document.getElementById('travellers').value) || 1;
+    if (!source || !destination || !date) { showToast('Fill in source, destination and date first', 'error'); return; }
+    try {
+      await api.post('/trips', { source, destination, date, travellers,
+        budget: document.getElementById('budget').value,
+        notes: document.getElementById('notes').value });
+      showToast('Trip saved!', 'success');
+    } catch(e) { showToast(e.message, 'error'); }
+  }
+
+  function renderTrains(trains, source, destination, date, travellers) {
+    const container = document.getElementById('trainResults');
+    if (!trains || trains.length === 0) {
+      container.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text3)"><p>No trains found for this route.</p></div>`;
+      return;
+    }
+
+    const dateFormatted = formatDate(date);
+
+    container.innerHTML = `
+      <div class="results-header">
+        <div class="results-title">🚂 Available Trains</div>
+        <div class="train-count">${trains.length} trains found · ${dateFormatted}</div>
+      </div>`;
+
+    trains.forEach((t, i) => {
+      const card = document.createElement('div');
+      card.className = 'train-card';
+      card.style.animationDelay = (i * 0.07) + 's';
+
+      const badgeClass = trainBadgeClass(t.train_type);
+      const daysStr = Array.isArray(t.runs_on) ? t.runs_on.join(', ') : (t.runs_on || 'Daily');
+      const distStr = t.distance_km ? `${t.distance_km} km` : '';
+      const pantry  = t.pantry ? '🍽️ Pantry car' : '';
+
+      const classesHtml = (t.classes || []).map(c => {
+        const avStr = c.available === 0 ? 'WL' : c.available < 20 ? `${c.available} left` : `${c.available} avail`;
+        const avCls = c.available === 0 ? 'avail-wl' : c.available < 20 ? 'avail-few' : 'avail-ok';
+        return `
+          <div class="cls-box" onclick="this.parentElement.querySelectorAll('.cls-box').forEach(b=>b.classList.remove('selected'));this.classList.add('selected')">
+            <div class="cls-name">${c.name}</div>
+            <div class="cls-fare">₹${c.fare?.toLocaleString('en-IN')}</div>
+            <div class="cls-avail ${avCls}">${avStr}</div>
+          </div>`;
+      }).join('');
+
+      card.innerHTML = `
+        <div class="tc-head">
+          <div>
+            <div class="tc-name">${t.train_name}</div>
+            <div class="tc-number">Train #${t.train_number}</div>
+          </div>
+          <span class="badge ${badgeClass}">${t.train_type || 'Express'}</span>
+        </div>
+
+        <div class="tc-route">
+          <div class="tc-station">
+            <div class="tc-time">${t.departure}</div>
+            <div class="tc-stn-name">${t.source || source}</div>
+            <div class="tc-stn-code">${t.source_code || ''}</div>
+          </div>
+          <div class="tc-route-mid">
+            <div class="tc-duration">⏱ ${t.duration}</div>
+            <div class="tc-line">
+              <div class="tc-dot"></div>
+              <div class="tc-track"></div>
+              <div class="tc-dot" style="background:var(--blue)"></div>
+            </div>
+            <div class="tc-days">${daysStr}</div>
+          </div>
+          <div class="tc-station right">
+            <div class="tc-time">${t.arrival}</div>
+            <div class="tc-stn-name">${t.destination || destination}</div>
+            <div class="tc-stn-code">${t.destination_code || ''}</div>
+          </div>
+        </div>
+
+        <div class="tc-classes">${classesHtml}</div>
+
+        <div class="tc-footer">
+          <div class="tc-info">
+            ${distStr ? `<div class="tc-info-item">📍 ${distStr}</div>` : ''}
+            ${pantry ? `<div class="tc-info-item">${pantry}</div>` : ''}
+            <div class="tc-info-item">👥 ${travellers} traveller${travellers>1?'s':''}</div>
+          </div>
+          <button class="btn btn-primary" style="font-size:0.82rem;padding:8px 18px" onclick="bookTrain('${t.train_number}', '${t.train_name}')">
+            Book Now →
+          </button>
+        </div>`;
+
+      container.appendChild(card);
+    });
+  }
+
+  function bookTrain(num, name) {
+    showToast(`Opening IRCTC booking for ${name} (${num})`, 'info');
+    setTimeout(() => window.open(`https://www.irctc.co.in/nget/train-search`, '_blank'), 800);
+  }
+</script>
+</body>
+</html>

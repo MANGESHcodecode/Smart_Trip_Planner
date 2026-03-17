@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Login — TripYatra</title>
+<link rel="stylesheet" href="/styles.css"/>
+<style>
+  body { display:flex; align-items:center; justify-content:center; min-height:100vh; padding:20px; }
+  body::before {
+    content:'';
+    position:fixed; inset:0;
+    background: radial-gradient(ellipse at 60% 20%, rgba(249,115,22,0.12) 0%, transparent 55%),
+                radial-gradient(ellipse at 10% 80%, rgba(96,165,250,0.08) 0%, transparent 50%);
+    pointer-events:none;
+  }
+  .auth-wrap { width:100%; max-width:440px; animation: fadeUp 0.4s ease; }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:none} }
+  .auth-logo {
+    text-align:center; margin-bottom:32px;
+    font-family:'Syne',sans-serif; font-size:2rem; font-weight:800;
+    letter-spacing:-1px;
+  }
+  .auth-logo span { color:var(--accent); }
+  .auth-logo p { font-family:'Plus Jakarta Sans',sans-serif; font-size:0.9rem; color:var(--text2); font-weight:400; margin-top:4px; }
+  .auth-card { background:var(--surface); border:1px solid var(--border2); border-radius:20px; padding:36px; }
+  .auth-title { font-size:1.4rem; font-weight:800; margin-bottom:6px; }
+  .auth-sub { font-size:0.88rem; color:var(--text2); margin-bottom:28px; }
+  .divider { text-align:center; color:var(--text3); font-size:0.8rem; margin:20px 0; position:relative; }
+  .divider::before { content:''; position:absolute; top:50%; left:0; right:0; height:1px; background:var(--border); }
+  .divider span { background:var(--surface); padding:0 12px; position:relative; }
+  .auth-switch { text-align:center; font-size:0.88rem; color:var(--text2); margin-top:20px; }
+  .auth-switch a { color:var(--accent); text-decoration:none; font-weight:600; }
+  .auth-switch a:hover { text-decoration:underline; }
+  .error-msg { background:rgba(248,113,113,0.1); border:1px solid rgba(248,113,113,0.25); border-radius:8px; padding:10px 14px; font-size:0.85rem; color:var(--red); margin-bottom:16px; display:none; }
+</style>
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-logo">
+    Trip<span>Yatra</span>
+    <p>Your smart India travel companion</p>
+  </div>
+  <div class="auth-card">
+    <h1 class="auth-title">Welcome back</h1>
+    <p class="auth-sub">Sign in to access your trips and plans</p>
+
+    <div class="error-msg" id="errorMsg"></div>
+
+    <div class="form-group">
+      <label>Email Address</label>
+      <input class="form-control" type="email" id="email" placeholder="you@example.com" autocomplete="email"/>
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input class="form-control" type="password" id="password" placeholder="Enter your password" autocomplete="current-password"/>
+    </div>
+
+    <button class="btn btn-primary w-full btn-lg" id="loginBtn" onclick="doLogin()">
+      Sign In
+    </button>
+
+    <div class="divider"><span>or</span></div>
+    <div class="auth-switch">
+      Don't have an account? <a href="/register.html">Create one free</a>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+<script>
+  // Redirect if already logged in
+  Auth.requireGuest();
+
+  // Enter key
+  document.addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+
+  async function doLogin() {
+    const email    = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const btn      = document.getElementById('loginBtn');
+    const errBox   = document.getElementById('errorMsg');
+
+    errBox.style.display = 'none';
+    if (!email || !password) { showErr('Please fill in all fields'); return; }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Signing in...';
+
+    try {
+      const data = await api.post('/auth/login', { email, password });
+      Auth.setSession(data.token, data.user);
+      showToast('Welcome back, ' + data.user.name + '!', 'success');
+      setTimeout(() => window.location.href = '/dashboard.html', 600);
+    } catch(e) {
+      showErr(e.message);
+      btn.disabled = false;
+      btn.innerHTML = 'Sign In';
+    }
+  }
+
+  function showErr(msg) {
+    const el = document.getElementById('errorMsg');
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+</script>
+</body>
+</html>

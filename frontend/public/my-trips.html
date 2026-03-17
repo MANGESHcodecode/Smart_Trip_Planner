@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>My Trips — TripYatra</title>
+<link rel="stylesheet" href="/styles.css"/>
+<style>
+  .page-wrap { max-width: 900px; margin: 0 auto; padding: 40px 24px 80px; }
+  .back-link { display:inline-flex;align-items:center;gap:6px;color:var(--text2);font-size:0.85rem;text-decoration:none;margin-bottom:24px;transition:color 0.2s; }
+  .back-link:hover { color:var(--text); }
+  .page-header { display:flex;align-items:center;justify-content:space-between;margin-bottom:32px; }
+  .page-header h1 { font-size:1.9rem;font-weight:800;letter-spacing:-0.5px; }
+
+  .trip-card {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:16px; padding:22px 24px; margin-bottom:14px;
+    display:flex; align-items:center; gap:18px;
+    animation: fadeUp 0.3s ease both; transition: border-color 0.2s;
+  }
+  .trip-card:hover { border-color: var(--border2); }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:none} }
+  .trip-icon {
+    width: 52px; height: 52px; border-radius:14px; flex-shrink:0;
+    background:rgba(249,115,22,0.1); color:var(--accent);
+    display:flex; align-items:center; justify-content:center; font-size:1.4rem;
+  }
+  .trip-body { flex:1; min-width:0; }
+  .trip-route { font-family:'Syne',sans-serif; font-size:1.05rem; font-weight:800; }
+  .trip-meta-row { display:flex; flex-wrap:wrap; gap:14px; margin-top:6px; }
+  .trip-meta-item { font-size:0.78rem; color:var(--text2); display:flex; align-items:center; gap:4px; }
+  .trip-actions { display:flex; gap:8px; flex-shrink:0; }
+  .status-badge { display:inline-flex; align-items:center; padding:2px 8px; border-radius:10px; font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; }
+  .status-planned  { background:rgba(96,165,250,0.12); color:var(--blue); }
+  .status-upcoming { background:rgba(249,115,22,0.12); color:var(--accent); }
+  .status-past     { background:rgba(71,85,105,0.2); color:var(--text3); }
+  .empty-state { text-align:center; padding:80px 20px; color:var(--text3); }
+  .empty-state .big { font-size:3.5rem; margin-bottom:16px; opacity:0.4; }
+  .filter-row { display:flex; gap:8px; margin-bottom:24px; flex-wrap:wrap; }
+  .filter-btn { padding:6px 16px; border-radius:20px; border:1px solid var(--border); background:transparent; color:var(--text2); font-family:'Plus Jakarta Sans',sans-serif; font-size:0.82rem; cursor:pointer; transition:all 0.18s; }
+  .filter-btn.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+</style>
+</head>
+<body>
+<div id="navbar"></div>
+<div class="page-wrap">
+  <a href="/dashboard.html" class="back-link">← Back to Dashboard</a>
+
+  <div class="page-header">
+    <h1>📋 My Trips</h1>
+    <a href="/plan-trip.html" class="btn btn-primary">+ Plan New Trip</a>
+  </div>
+
+  <div class="filter-row">
+    <button class="filter-btn active" onclick="setFilter('all', this)">All Trips</button>
+    <button class="filter-btn" onclick="setFilter('upcoming', this)">Upcoming</button>
+    <button class="filter-btn" onclick="setFilter('past', this)">Past</button>
+  </div>
+
+  <div id="tripsContainer">
+    <div style="text-align:center;padding:40px;color:var(--text2)"><span class="spinner"></span></div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+<script>
+  if (!Auth.requireAuth()) throw new Error();
+  renderNavbar('trips');
+
+  let allTrips = [];
+  let currentFilter = 'all';
+
+  function setFilter(filter, btn) {
+    currentFilter = filter;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderTrips();
+  }
+
+  function getStatus(trip) {
+    const d = new Date(trip.date);
+    const today = new Date(); today.setHours(0,0,0,0);
+    if (d < today) return 'past';
+    if (d.toDateString() === today.toDateString()) return 'upcoming';
+    return 'planned';
+  }
+
+  function renderTrips() {
+    const container = document.getElementById('tripsContainer');
+    let filtered = allTrips;
+    if (currentFilter === 'upcoming') filtered = allTrips.filter(t => getStatus(t) !== 'past');
+    if (currentFilter === 'past')     filtered = allTrips.filter(t => getStatus(t) === 'past');
+
+    if (filtered.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="big">🏝️</div>
+          <p style="font-size:1rem;color:var(--text2)">No trips found</p>
+          <a href="/plan-trip.html" class="btn btn-primary" style="margin-top:20px">Plan a Trip</a>
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = filtered.map((t, i) => {
+      const status = getStatus(t);
+      const statusLabel = status === 'past' ? 'Completed' : status === 'upcoming' ? 'Upcoming' : 'Planned';
+      return `
+        <div class="trip-card" style="animation-delay:${i*0.06}s">
+          <div class="trip-icon">🚂</div>
+          <div class="trip-body">
+            <div class="trip-route">${t.source} → ${t.destination}</div>
+            <div class="trip-meta-row">
+              <span class="trip-meta-item">📅 ${formatDate(t.date)}</span>
+              <span class="trip-meta-item">👥 ${t.travellers} traveller${t.travellers>1?'s':''}</span>
+              ${t.budget ? `<span class="trip-meta-item">💰 ₹${t.budget} budget</span>` : ''}
+              ${t.notes ? `<span class="trip-meta-item">📝 ${t.notes}</span>` : ''}
+              <span class="status-badge status-${status}">${statusLabel}</span>
+            </div>
+          </div>
+          <div class="trip-actions">
+            <a href="/plan-trip.html?src=${encodeURIComponent(t.source)}&dst=${encodeURIComponent(t.destination)}&date=${t.date}&n=${t.travellers}"
+               class="btn btn-ghost" style="font-size:0.8rem;padding:7px 14px">View Trains</a>
+            <button class="btn btn-danger" style="font-size:0.8rem;padding:7px 14px" onclick="deleteTrip(${t.id})">Delete</button>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  async function loadTrips() {
+    try {
+      const { trips } = await api.get('/trips');
+      allTrips = trips;
+      renderTrips();
+    } catch(e) {
+      showToast('Could not load trips', 'error');
+    }
+  }
+
+  async function deleteTrip(id) {
+    if (!confirm('Delete this trip?')) return;
+    try {
+      await api.delete(`/trips/${id}`);
+      allTrips = allTrips.filter(t => t.id !== id);
+      renderTrips();
+      showToast('Trip deleted', 'info');
+    } catch(e) {
+      showToast(e.message, 'error');
+    }
+  }
+
+  loadTrips();
+</script>
+</body>
+</html>

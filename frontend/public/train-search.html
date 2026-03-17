@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Train Search — TripYatra</title>
+<link rel="stylesheet" href="/styles.css"/>
+<style>
+  .page-wrap { max-width: 960px; margin: 0 auto; padding: 40px 24px 80px; }
+  .back-link { display:inline-flex;align-items:center;gap:6px;color:var(--text2);font-size:0.85rem;text-decoration:none;margin-bottom:24px; }
+  .back-link:hover { color:var(--text); }
+  .search-card { background:var(--surface); border:1px solid var(--border2); border-radius:20px; padding:32px; margin-bottom:36px; animation:fadeUp 0.35s ease; }
+  @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  .search-card h1 { font-size:1.8rem; font-weight:800; letter-spacing:-0.5px; margin-bottom:8px; }
+  .search-card p { color:var(--text2); font-size:0.88rem; margin-bottom:28px; }
+
+  /* Reuse train card styles from plan-trip */
+  .train-card { background:var(--surface); border:1px solid var(--border); border-radius:16px; overflow:hidden; margin-bottom:16px; animation:fadeUp 0.3s ease both; transition:border-color 0.2s,box-shadow 0.2s; }
+  .train-card:hover { border-color:var(--border2); box-shadow:0 6px 24px rgba(0,0,0,0.3); }
+  .tc-head { padding:18px 22px 14px; display:flex; align-items:flex-start; justify-content:space-between; border-bottom:1px solid var(--border); }
+  .tc-name { font-family:'Syne',sans-serif; font-size:1.05rem; font-weight:800; }
+  .tc-number { font-size:0.78rem; color:var(--text3); font-family:monospace; margin-top:3px; }
+  .tc-route { padding:20px 22px; display:flex; align-items:center; border-bottom:1px solid var(--border); }
+  .tc-station { min-width:120px; }
+  .tc-time { font-family:'Syne',sans-serif; font-size:1.5rem; font-weight:800; }
+  .tc-stn-name { font-size:0.78rem; color:var(--text2); margin-top:4px; }
+  .tc-stn-code { font-size:0.7rem; color:var(--text3); font-family:monospace; }
+  .tc-route-mid { flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; padding:0 16px; }
+  .tc-duration { font-size:0.78rem; color:var(--accent); font-weight:600; }
+  .tc-line { width:100%; display:flex; align-items:center; }
+  .tc-dot { width:8px; height:8px; border-radius:50%; background:var(--accent); flex-shrink:0; }
+  .tc-track { flex:1; height:2px; background:linear-gradient(90deg,var(--accent),var(--blue)); }
+  .tc-station.right { text-align:right; }
+  .tc-classes { padding:14px 22px; display:flex; gap:8px; flex-wrap:wrap; border-bottom:1px solid var(--border); }
+  .cls-box { flex:1; min-width:72px; max-width:110px; background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:10px 8px; text-align:center; cursor:pointer; transition:all 0.18s; }
+  .cls-box:hover { border-color:var(--accent); }
+  .cls-name { font-size:0.72rem; color:var(--text2); text-transform:uppercase; letter-spacing:0.5px; font-weight:600; }
+  .cls-fare { font-family:'Syne',sans-serif; font-size:1rem; font-weight:800; margin:4px 0 2px; }
+  .cls-avail { font-size:0.68rem; font-weight:600; }
+  .avail-ok { color:var(--green); } .avail-few { color:var(--yellow); } .avail-wl { color:var(--red); }
+  .tc-footer { padding:12px 22px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+  .ai-loading { text-align:center; padding:60px 20px; color:var(--text2); }
+  .ai-loading .ring { width:48px; height:48px; border:3px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; margin:0 auto 16px; }
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="navbar"></div>
+<div class="page-wrap">
+  <a href="/dashboard.html" class="back-link">← Back to Dashboard</a>
+
+  <div class="search-card">
+    <h1>🚂 Train Search</h1>
+    <p>Search available trains between any two cities. Results are AI-generated and reflect real Indian Railways schedules.</p>
+    <div class="form-row">
+      <div class="form-group">
+        <label>From</label>
+        <input class="form-control" id="src" placeholder="e.g. Mumbai" list="cl"/>
+      </div>
+      <div class="form-group">
+        <label>To</label>
+        <input class="form-control" id="dst" placeholder="e.g. Delhi" list="cl"/>
+      </div>
+      <div class="form-group" style="flex:0 0 160px">
+        <label>Date</label>
+        <input class="form-control" type="date" id="dt"/>
+      </div>
+    </div>
+    <datalist id="cl">
+      <option value="Mumbai"/><option value="Delhi"/><option value="Kolkata"/><option value="Chennai"/>
+      <option value="Bangalore"/><option value="Hyderabad"/><option value="Pune"/><option value="Jaipur"/>
+      <option value="Lucknow"/><option value="Ahmedabad"/><option value="Goa"/><option value="Varanasi"/>
+    </datalist>
+    <button class="btn btn-primary btn-lg w-full" id="sBtn" onclick="doSearch()" style="margin-top:4px">
+      Search Trains
+    </button>
+  </div>
+
+  <div id="results"></div>
+</div>
+
+<script src="/app.js"></script>
+<script>
+  if (!Auth.requireAuth()) throw new Error();
+  renderNavbar('trains');
+  document.getElementById('dt').value = todayISO();
+  document.getElementById('dt').min   = todayISO();
+
+  // Pre-fill from URL params (used from My Trips "View Trains")
+  const p = new URLSearchParams(location.search);
+  if (p.get('src')) document.getElementById('src').value = p.get('src');
+  if (p.get('dst')) document.getElementById('dst').value = p.get('dst');
+  if (p.get('date')) document.getElementById('dt').value = p.get('date');
+  if (p.get('src') && p.get('dst')) doSearch();
+
+  async function doSearch() {
+    const src = document.getElementById('src').value.trim();
+    const dst = document.getElementById('dst').value.trim();
+    const dt  = document.getElementById('dt').value;
+    if (!src || !dst) { showToast('Enter source and destination', 'error'); return; }
+
+    const btn = document.getElementById('sBtn');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Searching...';
+    const s = parseInt(localStorage.getItem('ty_searches')||0);
+    localStorage.setItem('ty_searches', s+1);
+
+    document.getElementById('results').innerHTML = `<div class="ai-loading"><div class="ring"></div><p>Searching trains: <strong>${src}</strong> → <strong>${dst}</strong></p></div>`;
+
+    try {
+      const { trains } = await api.post('/trains/search', { source:src, destination:dst, date:dt, travellers:1 });
+      renderTrains(trains, src, dst, dt);
+    } catch(e) {
+      document.getElementById('results').innerHTML = `<div style="background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);border-radius:12px;padding:20px;text-align:center;color:var(--red)">${e.message}</div>`;
+    } finally {
+      btn.disabled=false; btn.innerHTML='Search Trains';
+    }
+  }
+
+  function renderTrains(trains, src, dst, dt) {
+    const c = document.getElementById('results');
+    if (!trains?.length) { c.innerHTML = `<p style="text-align:center;color:var(--text3);padding:40px">No trains found.</p>`; return; }
+    c.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px"><div style="font-family:Syne,sans-serif;font-size:1.2rem;font-weight:800">Results</div><div style="background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:4px 14px;font-size:0.8rem;color:var(--text2)">${trains.length} trains · ${formatDate(dt)}</div></div>`;
+    trains.forEach((t,i) => {
+      const card = document.createElement('div');
+      card.className='train-card'; card.style.animationDelay=i*0.06+'s';
+      const clsHtml=(t.classes||[]).map(c=>{
+        const av=c.available===0?'WL':c.available<20?c.available+' left':c.available+' avail';
+        const cl=c.available===0?'avail-wl':c.available<20?'avail-few':'avail-ok';
+        return `<div class="cls-box"><div class="cls-name">${c.name}</div><div class="cls-fare">₹${c.fare?.toLocaleString('en-IN')}</div><div class="cls-avail ${cl}">${av}</div></div>`;
+      }).join('');
+      card.innerHTML=`
+        <div class="tc-head">
+          <div><div class="tc-name">${t.train_name}</div><div class="tc-number">#${t.train_number}</div></div>
+          <span class="badge ${trainBadgeClass(t.train_type)}">${t.train_type||'Express'}</span>
+        </div>
+        <div class="tc-route">
+          <div class="tc-station"><div class="tc-time">${t.departure}</div><div class="tc-stn-name">${t.source||src}</div><div class="tc-stn-code">${t.source_code||''}</div></div>
+          <div class="tc-route-mid">
+            <div class="tc-duration">⏱ ${t.duration}</div>
+            <div class="tc-line"><div class="tc-dot"></div><div class="tc-track"></div><div class="tc-dot" style="background:var(--blue)"></div></div>
+          </div>
+          <div class="tc-station right"><div class="tc-time">${t.arrival}</div><div class="tc-stn-name">${t.destination||dst}</div><div class="tc-stn-code">${t.destination_code||''}</div></div>
+        </div>
+        <div class="tc-classes">${clsHtml}</div>
+        <div class="tc-footer">
+          <div style="font-size:0.75rem;color:var(--text2)">${t.distance_km?'📍 '+t.distance_km+' km · ':''} ${Array.isArray(t.runs_on)?t.runs_on.join(', '):''}</div>
+          <button class="btn btn-primary" style="font-size:0.82rem;padding:8px 18px" onclick="window.open('https://www.irctc.co.in','_blank')">Book on IRCTC →</button>
+        </div>`;
+      c.appendChild(card);
+    });
+  }
+</script>
+</body>
+</html>
