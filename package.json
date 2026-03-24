@@ -1,0 +1,10 @@
+{
+  "name": "tripyatra",
+  "version": "1.0.0",
+  "description": "Smart Trip Planner Full Stack",
+  "scripts": {
+    "start:backend": "cd backend && npm start",
+    "start:frontend": "cd frontend && npm start",
+    "dev": "npm run start:backend & npm run start:frontend"
+  }
+}

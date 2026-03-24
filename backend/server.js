@@ -62,13 +62,33 @@ app.get('/api/auth/me', authenticateToken, (req, res) => res.json({ user: req.us
 app.post('/api/trips', authenticateToken, (req, res) => {
   const { title, source, destination, date, travellers, budget, notes } = req.body;
   if (!source || !destination || !date) return res.status(400).json({ error: 'Source, destination and date required' });
-  const trip = { id: tripIdCounter++, userId: req.user.id, title: title || `${source} to ${destination}`, source, destination, date, travellers: travellers || 1, budget: budget || '', notes: notes || '', status: 'planned', createdAt: new Date() };
+  const trip = {
+    id: tripIdCounter++,
+    userId: req.user.id,
+    title: title || `${source} to ${destination}`,
+    source,
+    destination,
+    date,
+    travellers: travellers || 1,
+    budget: budget || '',
+    notes: notes || '',
+    status: 'planned',
+    createdAt: new Date(),
+    source_coords: getCoords(source).join(','),
+    dest_coords: getCoords(destination).join(','),
+  };
   trips.push(trip);
   res.status(201).json({ message: 'Trip saved!', trip });
 });
 
 app.get('/api/trips', authenticateToken, (req, res) => {
-  const userTrips = trips.filter(t => t.userId === req.user.id).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const userTrips = trips.filter(t => t.userId === req.user.id)
+    .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .map(t => ({
+      ...t,
+      source_coords: t.source_coords || getCoords(t.source).join(','),
+      dest_coords: t.dest_coords || getCoords(t.destination).join(','),
+    }));
   res.json({ trips: userTrips });
 });
 
@@ -136,6 +156,28 @@ const STATION_CODES = {
   'RAIPUR':'R', 'BILASPUR':'BSP', 'GOA':'MAO', 'MARGAO':'MAO', 'PANAJI':'MAO',
   'JAMMU':'JAT', 'SHIMLA':'SML', 'SRINAGAR':'SVDK',
 };
+
+// ── Station coordinates lookup table (city name → [lat, lng]) ──
+const STATION_COORDS = {
+  'MUMBAI': [19.0760, 72.8777], 'BOMBAY': [19.0760, 72.8777],
+  'DELHI': [28.6139, 77.2090], 'NEW DELHI': [28.6139, 77.2090],
+  'KOLKATA': [22.5726, 88.3639], 'CALCUTTA': [22.5726, 88.3639],
+  'CHENNAI': [13.0827, 80.2707], 'MADRAS': [13.0827, 80.2707],
+  'BANGALORE': [12.9716, 77.5946], 'BENGALURU': [12.9716, 77.5946],
+  'HYDERABAD': [17.3850, 78.4867], 'PUNE': [18.5204, 73.8567],
+  'JAIPUR': [26.9124, 75.7873], 'LUCKNOW': [26.8467, 80.9462],
+  'AHMEDABAD': [23.0225, 72.5714], 'GOA': [15.2993, 74.1240],
+  'VARANASI': [25.3176, 82.9739], 'NAGPUR': [21.1458, 79.0882],
+  'PATNA': [25.5941, 85.1376], 'BHOPAL': [23.2599, 77.4126],
+  'SURAT': [21.1702, 72.8311], 'KOCHI': [9.9312, 76.2673],
+  'AGRA': [27.1767, 78.0081], 'AMRITSAR': [31.6340, 74.8723],
+  'CHANDIGARH': [30.7333, 76.7794], 'COIMBATORE': [11.0168, 76.9558],
+};
+
+function getCoords(cityName) {
+  const upper = cityName.toUpperCase().trim();
+  return STATION_COORDS[upper] || [20.5937, 78.9629]; // fallback: center of India
+}
 
 // Convert city name to station code
 function getStationCode(cityName) {
@@ -210,6 +252,8 @@ function transformTrains(apiTrains, srcName, dstName, srcCode, dstCode) {
       classes,
       pantry:           ['Rajdhani','Duronto','Shatabdi'].includes(train_type),
       distance_km:      null,
+      source_coords:    getCoords(srcName).join(','),
+      dest_coords:      getCoords(dstName).join(','),
     };
   });
 }
@@ -365,6 +409,8 @@ function lookupRouteDB(src, dst) {
     classes:         t.cls.map(c => ({ name:c.n, fare:c.f, available:c.a })),
     pantry:          t.pantry,
     distance_km:     t.km,
+    source_coords:   getCoords(rev ? dst : src).join(','),
+    dest_coords:     getCoords(rev ? src : dst).join(','),
   }));
 }
 

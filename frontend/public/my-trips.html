@@ -118,6 +118,10 @@
             </div>
           </div>
           <div class="trip-actions">
+            <button class="btn btn-secondary" style="font-size:0.8rem;padding:7px 14px" 
+                    onclick="window.location.href='/map-view.html?from=${t.source_coords}&to=${t.dest_coords}&src=${encodeURIComponent(t.source)}&dst=${encodeURIComponent(t.destination)}'">
+              View Route
+            </button>
             <a href="/plan-trip.html?src=${encodeURIComponent(t.source)}&dst=${encodeURIComponent(t.destination)}&date=${t.date}&n=${t.travellers}"
                class="btn btn-ghost" style="font-size:0.8rem;padding:7px 14px">View Trains</a>
             <button class="btn btn-danger" style="font-size:0.8rem;padding:7px 14px" onclick="deleteTrip(${t.id})">Delete</button>

@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Trip Route — TripYatra</title>
+<link rel="stylesheet" href="/styles.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<style>
+  .page-wrap { max-width: 1200px; margin: 0 auto; padding: 40px 24px 80px; }
+  #map { 
+    height: 600px; 
+    width: 100%;
+    border-radius: 20px; 
+    border: 1px solid var(--border2); 
+    background: #111; /* fallback background */
+    margin-top: 20px;
+    z-index: 1;
+  }
+  .back-link { display:inline-flex; align-items:center; gap:6px; color:var(--text2); font-size:0.85rem; text-decoration:none; margin-bottom:24px; }
+  .back-link:hover { color:var(--text); }
+  .map-error {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--red);
+    text-align: center;
+    z-index: 10;
+    background: rgba(0,0,0,0.8);
+    padding: 20px;
+    border-radius: 10px;
+    display: none;
+  }
+</style>
+</head>
+<body>
+<div id="navbar"></div>
+<div class="page-wrap">
+  <a href="/dashboard.html" class="back-link">← Back to Dashboard</a>
+  <h1 style="font-size:1.8rem; font-weight:800; margin-bottom:8px;">Trip Route</h1>
+  <p style="color:var(--text2); margin-bottom:24px;">Visualizing the train route from source to destination.</p>
+  
+  <div style="position: relative;">
+    <div id="map"></div>
+    <div id="mapError" class="map-error"></div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+  if (!Auth.requireAuth()) throw new Error();
+  renderNavbar();
+
+  const params = new URLSearchParams(window.location.search);
+  let from = params.get('from');
+  let to = params.get('to');
+  const srcName = params.get('src');
+  const dstName = params.get('dst');
+
+  function showError(msg) {
+    const el = document.getElementById('mapError');
+    el.innerHTML = msg;
+    el.style.display = 'block';
+  }
+
+  // --- FALLBACK COORDINATES ---
+  const STATION_COORDS = {
+    'MUMBAI': [19.0760, 72.8777], 'BOMBAY': [19.0760, 72.8777],
+    'DELHI': [28.6139, 77.2090], 'NEW DELHI': [28.6139, 77.2090],
+    'KOLKATA': [22.5726, 88.3639], 'CALCUTTA': [22.5726, 88.3639],
+    'CHENNAI': [13.0827, 80.2707], 'MADRAS': [13.0827, 80.2707],
+    'BANGALORE': [12.9716, 77.5946], 'BENGALURU': [12.9716, 77.5946],
+    'HYDERABAD': [17.3850, 78.4867], 'PUNE': [18.5204, 73.8567],
+    'JAIPUR': [26.9124, 75.7873], 'LUCKNOW': [26.8467, 80.9462],
+    'AHMEDABAD': [23.0225, 72.5714], 'GOA': [15.2993, 74.1240],
+    'VARANASI': [25.3176, 82.9739], 'NAGPUR': [21.1458, 79.0882],
+    'PATNA': [25.5941, 85.1376], 'BHOPAL': [23.2599, 77.4126],
+    'SURAT': [21.1702, 72.8311], 'KOCHI': [9.9312, 76.2673],
+    'AGRA': [27.1767, 78.0081], 'AMRITSAR': [31.6340, 74.8723],
+    'CHANDIGARH': [30.7333, 76.7794], 'COIMBATORE': [11.0168, 76.9558],
+  };
+
+  function getFallbackCoords(name) {
+    if (!name) return null;
+    const upper = name.toUpperCase().trim();
+    return STATION_COORDS[upper];
+  }
+
+  // Attempt to resolve coordinates if missing from URL
+  if (!from && srcName) {
+    const coords = getFallbackCoords(srcName);
+    if (coords) from = coords.join(',');
+  }
+  if (!to && dstName) {
+    const coords = getFallbackCoords(dstName);
+    if (coords) to = coords.join(',');
+  }
+
+  if (!from || !to) {
+    showError("<b>Missing coordinates</b><br><br>The system couldn't find location data for this route.<br>Try searching again or choosing major cities.");
+  } else {
+    try {
+      const [fromLat, fromLng] = from.split(',').map(Number);
+      const [toLat, toLng] = to.split(',').map(Number);
+
+      if (isNaN(fromLat) || isNaN(fromLng) || isNaN(toLat) || isNaN(toLng)) {
+        throw new Error("Invalid coordinates format.");
+      }
+
+      // Initialize map
+      const map = L.map('map').setView([fromLat, fromLng], 6);
+
+      // Use OpenStreetMap tiles (FREE)
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '© OpenStreetMap contributors'
+      }).addTo(map);
+
+      // Custom icon for markers
+      const stationIcon = L.divIcon({
+        className: 'custom-div-icon',
+        html: "<div style='background-color:var(--accent);width:12px;height:12px;border-radius:50%;border:2px solid white;'></div>",
+        iconSize: [12, 12],
+        iconAnchor: [6, 6]
+      });
+
+      L.marker([fromLat, fromLng], {icon: stationIcon}).addTo(map).bindPopup('<b>Source</b>').openPopup();
+      L.marker([toLat, toLng], {icon: stationIcon}).addTo(map).bindPopup('<b>Destination</b>');
+
+      async function getRoute() {
+          // OSRM API (FREE routing)
+          // Note: OSRM uses [lng, lat] format
+          const url = `https://router.project-osrm.org/route/v1/driving/${fromLng},${fromLat};${toLng},${toLat}?overview=full&geometries=geojson`;
+          
+          try {
+              const res = await fetch(url);
+              if (!res.ok) throw new Error("Routing service unavailable.");
+              const data = await res.json();
+              
+              if (data.routes && data.routes.length > 0) {
+                  const route = data.routes[0].geometry;
+                  const routeLayer = L.geoJSON(route, {
+                    style: {
+                      color: 'var(--accent)',
+                      weight: 5,
+                      opacity: 0.7
+                    }
+                  }).addTo(map);
+                  
+                  // Zoom to fit the route
+                  map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
+              } else {
+                  console.warn('No detailed route found, showing straight line.');
+                  const polyline = L.polyline([[fromLat, fromLng], [toLat, toLng]], {color: 'var(--accent)', dashArray: '10, 10'}).addTo(map);
+                  map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
+              }
+          } catch (error) {
+              console.error('Error fetching route:', error);
+              // Fallback to straight line
+              const polyline = L.polyline([[fromLat, fromLng], [toLat, toLng]], {color: 'var(--accent)', dashArray: '10, 10'}).addTo(map);
+              map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
+          }
+      }
+
+      getRoute();
+      
+      // Fix for Leaflet grey tiles issue when container size changes
+      setTimeout(() => {
+        map.invalidateSize();
+      }, 500);
+
+    } catch (e) {
+      showError("Error initializing map: " + e.message);
+    }
+  }
+</script>
+</body>
+</html>

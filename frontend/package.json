@@ -1,0 +1,10 @@
+{
+  "name": "tripyatra-frontend",
+  "version": "1.0.0",
+  "description": "Smart Trip Planner Frontend Server",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {}
+}

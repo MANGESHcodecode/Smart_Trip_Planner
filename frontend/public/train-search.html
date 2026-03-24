@@ -144,7 +144,13 @@
         <div class="tc-classes">${clsHtml}</div>
         <div class="tc-footer">
           <div style="font-size:0.75rem;color:var(--text2)">${t.distance_km?'📍 '+t.distance_km+' km · ':''} ${Array.isArray(t.runs_on)?t.runs_on.join(', '):''}</div>
-          <button class="btn btn-primary" style="font-size:0.82rem;padding:8px 18px" onclick="window.open('https://www.irctc.co.in','_blank')">Book on IRCTC →</button>
+          <div>
+            <button class="btn btn-secondary" style="font-size:0.82rem;padding:8px 18px" 
+                    onclick="window.location.href='/map-view.html?from=${t.source_coords}&to=${t.dest_coords}&src=${encodeURIComponent(src)}&dst=${encodeURIComponent(dst)}'">
+              View Route
+            </button>
+            <button class="btn btn-primary" style="font-size:0.82rem;padding:8px 18px" onclick="window.open('https://www.irctc.co.in','_blank')">Book on IRCTC →</button>
+          </div>
         </div>`;
       c.appendChild(card);
     });
