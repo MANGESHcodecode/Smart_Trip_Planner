@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Search Flights — TripYatra</title>
+<link rel="stylesheet" href="/styles.css"/>
+<style>
+  .page-wrap { max-width: 1100px; margin: 0 auto; padding: 40px 24px 80px; }
+  .page-header { margin-bottom: 36px; animation: fadeUp 0.3s ease; }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:none} }
+  .page-header h1 { font-size: 2rem; font-weight: 800; letter-spacing: -0.5px; }
+  .page-header p { color: var(--text2); margin-top: 6px; }
+  .back-link { display:inline-flex; align-items:center; gap:6px; color:var(--text2); font-size:0.85rem; text-decoration:none; margin-bottom:24px; transition:color 0.2s; }
+  .back-link:hover { color:var(--text); }
+
+  .flight-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; overflow: hidden; margin-bottom: 16px;
+    animation: fadeUp 0.3s ease both; transition: all 0.2s;
+  }
+  .flight-card:hover { border-color: var(--blue); box-shadow: 0 6px 24px rgba(0,0,0,0.3); }
+  
+  .fc-head { padding: 18px 22px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); }
+  .fc-airline { display: flex; align-items: center; gap: 12px; }
+  .fc-logo { width: 32px; height: 32px; border-radius: 8px; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; }
+  .fc-name { font-weight: 800; font-size: 1.1rem; }
+  .fc-num { font-size: 0.75rem; color: var(--text3); font-family: monospace; }
+
+  .fc-route { padding: 24px 22px; display: flex; align-items: center; gap: 20px; }
+  .fc-time { font-family: 'Syne', sans-serif; font-size: 1.6rem; font-weight: 800; }
+  .fc-stn { font-size: 0.85rem; color: var(--text2); margin-top: 4px; }
+  .fc-mid { flex: 1; text-align: center; position: relative; }
+  .fc-duration { font-size: 0.75rem; color: var(--text3); margin-bottom: 8px; }
+  .fc-line { height: 2px; background: var(--border2); position: relative; }
+  .fc-line::after { content: '✈️'; position: absolute; top: -10px; left: 50%; transform: translateX(-50%); font-size: 1rem; }
+
+  .fc-footer { padding: 16px 22px; background: var(--surface2); display: flex; align-items: center; justify-content: space-between; }
+  .fc-price { font-family: 'Syne', sans-serif; font-size: 1.3rem; font-weight: 800; color: var(--text); }
+  .fc-seats { font-size: 0.75rem; color: var(--green); font-weight: 700; }
+</style>
+</head>
+<body>
+<div id="navbar"></div>
+
+<div class="page-wrap">
+  <a href="/dashboard.html" class="back-link">← Back to Dashboard</a>
+
+  <div class="page-header">
+    <h1>✈️ Search Flights</h1>
+    <p>Find the fastest way to your destination with our flight search.</p>
+  </div>
+
+  <div class="plan-form-card">
+    <div class="form-row">
+      <div class="form-group">
+        <label>From</label>
+        <input class="form-control" id="source" type="text" placeholder="e.g. Mumbai" list="city-list"/>
+      </div>
+      <div class="form-group">
+        <label>To</label>
+        <input class="form-control" id="destination" type="text" placeholder="e.g. Delhi" list="city-list"/>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Departure Date</label>
+        <input class="form-control" id="flightDate" type="date"/>
+      </div>
+      <div class="form-group">
+        <label>Travellers</label>
+        <input class="form-control" id="travellers" type="number" min="1" value="1"/>
+      </div>
+    </div>
+    <button class="btn btn-primary btn-lg w-full" id="searchBtn" onclick="searchFlights()">🔍 Search Flights →</button>
+  </div>
+
+  <div id="flightResults" style="margin-top:40px"></div>
+
+  <datalist id="city-list">
+    <option value="Mumbai"/><option value="Delhi"/><option value="Kolkata"/>
+    <option value="Chennai"/><option value="Bangalore"/><option value="Hyderabad"/>
+    <option value="Pune"/><option value="Ahmedabad"/><option value="Jaipur"/>
+    <option value="Lucknow"/><option value="Patna"/><option value="Bhopal"/>
+    <option value="Nagpur"/><option value="Surat"/><option value="Kochi"/>
+    <option value="Goa"/><option value="Varanasi"/><option value="Agra"/>
+    <option value="Amritsar"/><option value="Chandigarh"/><option value="Coimbatore"/>
+  </datalist>
+</div>
+
+<script src="/app.js"></script>
+<script>
+  if (!Auth.requireAuth()) throw new Error();
+  renderNavbar('flights');
+  document.getElementById('flightDate').min = todayISO();
+  document.getElementById('flightDate').value = todayISO();
+
+  async function searchFlights() {
+    const source = document.getElementById('source').value.trim();
+    const destination = document.getElementById('destination').value.trim();
+    const date = document.getElementById('flightDate').value;
+    
+    if(!source || !destination || !date) return showToast('Please fill all fields', 'error');
+
+    const btn = document.getElementById('searchBtn');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Searching...';
+    
+    document.getElementById('flightResults').innerHTML = `<div class="ai-loading"><div class="loader-ring"></div><p>Fetching best flight deals...</p></div>`;
+
+    try {
+      const { flights } = await api.post('/flights/search', { source, destination, date });
+      renderFlights(flights, date);
+    } catch(e) { showToast(e.message, 'error'); }
+    finally { btn.disabled = false; btn.innerHTML = '🔍 Search Flights →'; }
+  }
+
+  function renderFlights(flights, date) {
+    const container = document.getElementById('flightResults');
+    if(!flights || flights.length === 0) {
+      container.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text3)"><p>No flights found for this route.</p></div>`;
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="results-header">
+        <div class="results-title">✈️ Flight Options</div>
+        <div class="train-count">${flights.length} flights found · ${formatDate(date)}</div>
+      </div>
+      ${flights.map((f, i) => `
+        <div class="flight-card" style="animation-delay: ${i*0.1}s">
+          <div class="fc-head">
+            <div class="fc-airline">
+              <div class="fc-logo">✈️</div>
+              <div>
+                <div class="fc-name">${f.airline}</div>
+                <div class="fc-num">${f.flight_number}</div>
+              </div>
+            </div>
+            <span class="badge badge-blue">Non-stop</span>
+          </div>
+          <div class="fc-route">
+            <div><div class="fc-time">${f.departure}</div><div class="fc-stn">${f.source}</div></div>
+            <div class="fc-mid">
+              <div class="fc-duration">${f.duration}</div>
+              <div class="fc-line"></div>
+            </div>
+            <div style="text-align:right"><div class="fc-time">${f.arrival}</div><div class="fc-stn">${f.destination}</div></div>
+          </div>
+          <div class="fc-footer">
+            <div><div class="fc-price">₹${f.price.toLocaleString('en-IN')}</div><div class="fc-seats">${f.available_seats} seats left</div></div>
+            <button class="btn btn-primary" onclick="showToast('Booking feature coming soon!', 'info')">Book Flight →</button>
+          </div>
+        </div>
+      `).join('')}
+    `;
+  }
+</script>
+</body>
+</html>

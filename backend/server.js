@@ -414,6 +414,89 @@ function lookupRouteDB(src, dst) {
   }));
 }
 
+// ════════════════════════════════════════════════════════
+//  PACKAGES & ITINERARY
+// ════════════════════════════════════════════════════════
+const PACKAGES = [
+  { id: 1, name: 'Golden Triangle', cities: ['Delhi', 'Agra', 'Jaipur'], duration: '5 Days', price: 15000, image: '🏯', description: 'Explore the heritage of North India.' },
+  { id: 2, name: 'God\'s Own Country', cities: ['Kochi', 'Munnar', 'Alleppey'], duration: '6 Days', price: 18000, image: '🌴', description: 'Experience the backwaters and hills of Kerala.' },
+  { id: 3, name: 'Royal Rajasthan', cities: ['Jaipur', 'Jodhpur', 'Udaipur'], duration: '7 Days', price: 22000, image: '🏰', description: 'A journey through the land of Maharajas.' },
+  { id: 4, name: 'Himalayan Escape', cities: ['Chandigarh', 'Shimla', 'Manali'], duration: '6 Days', price: 14000, image: '🏔️', description: 'Snow-capped peaks and serene valleys.' },
+  { id: 5, name: 'Goa Beach Party', cities: ['Goa'], duration: '4 Days', price: 12000, image: '🏖️', description: 'Sun, sand, and non-stop fun.' },
+  { id: 6, name: 'Spiritual Varanasi', cities: ['Varanasi', 'Lucknow'], duration: '4 Days', price: 10000, image: '🪔', description: 'The oldest living city in the world.' },
+];
+
+app.get('/api/packages', (req, res) => {
+  res.json({ packages: PACKAGES });
+});
+
+app.post('/api/itinerary/generate', authenticateToken, async (req, res) => {
+  const { packageId, budget, travellers, accommodation, days, source } = req.body;
+  const pkg = PACKAGES.find(p => p.id === packageId);
+  if (!pkg && !source) return res.status(400).json({ error: 'Package or Source/Destination required' });
+
+  const dest = pkg ? pkg.cities[pkg.cities.length - 1] : req.body.destination;
+  const tripDays = days || (pkg ? parseInt(pkg.duration) : 3);
+
+  // Simple logic for transport suggestion
+  let transport = 'Train';
+  let transportReason = 'Budget-friendly and scenic.';
+  if (budget / travellers > 10000) {
+    transport = 'Flight';
+    transportReason = 'Faster and fits your premium budget.';
+  }
+
+  // Generate day-by-day itinerary
+  const itinerary = [];
+  const events = [
+    { time: '09:00 AM', activity: 'Breakfast at Hotel' },
+    { time: '11:00 AM', activity: 'Local Sightseeing & Landmarks' },
+    { time: '01:30 PM', activity: 'Lunch at famous local eatery' },
+    { time: '04:00 PM', activity: 'Cultural Experience / Market Visit' },
+    { time: '08:00 PM', activity: 'Dinner & Relaxation' }
+  ];
+
+  for (let i = 1; i <= tripDays; i++) {
+    itinerary.push({
+      day: i,
+      title: `Day ${i}: Exploring ${pkg ? pkg.cities[(i-1) % pkg.cities.length] : dest}`,
+      events: events.map(e => ({ ...e }))
+    });
+  }
+
+  res.json({
+    summary: {
+      source: source || 'Your Location',
+      destination: dest,
+      days: tripDays,
+      travellers,
+      budget,
+      accommodation,
+      suggestedTransport: transport,
+      transportReason
+    },
+    itinerary
+  });
+});
+
+// ── Flight Search Simulation ──────────────────────────────
+app.post('/api/flights/search', authenticateToken, (req, res) => {
+  const { source, destination, date } = req.body;
+  const airlines = ['IndiGo', 'Air India', 'Vistara', 'Akasa Air', 'SpiceJet'];
+  const flights = Array.from({ length: 5 }).map((_, i) => ({
+    flight_number: `6E-${100 + i}`,
+    airline: airlines[i],
+    source,
+    destination,
+    departure: `${10 + i}:00`,
+    arrival: `${12 + i}:30`,
+    duration: '2h 30m',
+    price: 4500 + (i * 800),
+    available_seats: 10 + (i * 5)
+  }));
+  res.json({ flights });
+});
+
 // HEALTH
 app.get('/api/health', (req, res) => {
   res.json({
@@ -425,6 +508,7 @@ app.get('/api/health', (req, res) => {
     trips:             trips.length,
     routes_in_db:      Object.keys(ROUTE_DB).length,
     station_codes:     Object.keys(STATION_CODES).length,
+    packages_count:    PACKAGES.length
   });
 });
 
