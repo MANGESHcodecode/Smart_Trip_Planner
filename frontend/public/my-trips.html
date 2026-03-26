@@ -39,6 +39,40 @@
   .filter-row { display:flex; gap:8px; margin-bottom:24px; flex-wrap:wrap; }
   .filter-btn { padding:6px 16px; border-radius:20px; border:1px solid var(--border); background:transparent; color:var(--text2); font-family:'Plus Jakarta Sans',sans-serif; font-size:0.82rem; cursor:pointer; transition:all 0.18s; }
   .filter-btn.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+
+  /* Modal Styles */
+  .modal {
+    display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); overflow-y: auto;
+  }
+  .modal-content {
+    background: var(--surface); border: 1px solid var(--border2);
+    width: 90%; max-width: 800px; margin: 60px auto; border-radius: 24px;
+    padding: 40px; position: relative; animation: modalIn 0.3s ease;
+  }
+  @keyframes modalIn { from{opacity:0;transform:scale(0.95)} to{opacity:1;transform:scale(1)} }
+  .close-modal {
+    position: absolute; right: 24px; top: 24px; font-size: 1.5rem; color: var(--text3);
+    cursor: pointer; transition: color 0.2s;
+  }
+  .close-modal:hover { color: var(--text); }
+  
+  /* Itinerary specific styles in modal */
+  .itinerary-summary { margin-bottom: 32px; }
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .sum-item { background: var(--surface2); padding: 16px; border-radius: 16px; border: 1px solid var(--border); }
+  .sum-label { font-size: 0.7rem; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; margin-bottom: 4px; }
+  .sum-value { font-family: 'Syne', sans-serif; font-size: 1rem; font-weight: 800; color: var(--text); }
+  
+  .day-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 18px; margin-bottom: 12px; overflow: hidden; }
+  .day-head { padding: 18px 24px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: var(--surface3); }
+  .day-title { font-family: 'Syne', sans-serif; font-size: 1.05rem; font-weight: 800; }
+  .day-events { padding: 12px 24px 20px; display: none; }
+  .day-card.open .day-events { display: block; }
+  .event-item { display: flex; gap: 20px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .event-item:last-child { border-bottom: none; }
+  .event-time { font-size: 0.78rem; font-weight: 700; color: var(--accent); min-width: 75px; flex-shrink: 0; }
+  .event-act { font-size: 0.88rem; color: var(--text2); line-height: 1.5; }
 </style>
 </head>
 <body>
@@ -59,6 +93,14 @@
 
   <div id="tripsContainer">
     <div style="text-align:center;padding:40px;color:var(--text2)"><span class="spinner"></span></div>
+  </div>
+</div>
+
+<!-- Itinerary Modal -->
+<div id="itineraryModal" class="modal">
+  <div class="modal-content">
+    <span class="close-modal" onclick="closeItinerary()">&times;</span>
+    <div id="itineraryContent"></div>
   </div>
 </div>
 
@@ -118,16 +160,71 @@
             </div>
           </div>
           <div class="trip-actions">
+            ${t.itinerary ? `<button class="btn btn-primary" style="font-size:0.8rem;padding:7px 14px" onclick="viewItinerary(${t.id})">View Itinerary</button>` : ''}
             <button class="btn btn-secondary" style="font-size:0.8rem;padding:7px 14px" 
                     onclick="window.location.href='/map-view.html?from=${t.source_coords}&to=${t.dest_coords}&src=${encodeURIComponent(t.source)}&dst=${encodeURIComponent(t.destination)}'">
               View Route
             </button>
-            <a href="/plan-trip.html?src=${encodeURIComponent(t.source)}&dst=${encodeURIComponent(t.destination)}&date=${t.date}&n=${t.travellers}"
+            <a href="/train-search.html?src=${encodeURIComponent(t.source)}&dst=${encodeURIComponent(t.destination)}&date=${t.date}"
                class="btn btn-ghost" style="font-size:0.8rem;padding:7px 14px">View Trains</a>
             <button class="btn btn-danger" style="font-size:0.8rem;padding:7px 14px" onclick="deleteTrip(${t.id})">Delete</button>
           </div>
         </div>`;
     }).join('');
+  }
+
+  function viewItinerary(tripId) {
+    const trip = allTrips.find(t => t.id === tripId);
+    if (!trip || !trip.itinerary) return;
+
+    const s = trip.summary || { source: trip.source, destination: trip.destination, days: trip.itinerary.length, travellers: trip.travellers, budget: trip.budget };
+    
+    const html = `
+      <div class="page-header" style="margin-bottom:24px">
+        <h1>✨ Trip Itinerary</h1>
+      </div>
+      <div class="itinerary-summary">
+        <div class="summary-grid">
+          <div class="sum-item"><div class="sum-label">Route</div><div class="sum-value">${s.source} → ${s.destination}</div></div>
+          <div class="sum-item"><div class="sum-label">Duration</div><div class="sum-value">${s.days} Days</div></div>
+          <div class="sum-item"><div class="sum-label">Travellers</div><div class="sum-value">${s.travellers}</div></div>
+          <div class="sum-item"><div class="sum-label">Budget</div><div class="sum-value">₹${s.budget?.toLocaleString('en-IN')}</div></div>
+        </div>
+        
+        <div class="section-title" style="margin-bottom:16px; font-weight:800; font-size:1.2rem; font-family:'Syne',sans-serif;">Day-by-Day Plan</div>
+        ${trip.itinerary.map(day => `
+          <div class="day-card">
+            <div class="day-head" onclick="this.parentElement.classList.toggle('open')">
+              <div class="day-title">${day.title}</div>
+              <div style="color:var(--text3)">▼</div>
+            </div>
+            <div class="day-events">
+              ${day.events.map(e => `
+                <div class="event-item">
+                  <div class="event-time">${e.time}</div>
+                  <div class="event-act">${e.activity}</div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    
+    document.getElementById('itineraryContent').innerHTML = html;
+    document.getElementById('itineraryModal').style.display = 'block';
+    document.body.style.overflow = 'hidden'; // Prevent scrolling background
+  }
+
+  function closeItinerary() {
+    document.getElementById('itineraryModal').style.display = 'none';
+    document.body.style.overflow = 'auto';
+  }
+
+  // Close modal when clicking outside
+  window.onclick = function(event) {
+    const modal = document.getElementById('itineraryModal');
+    if (event.target == modal) closeItinerary();
   }
 
   async function loadTrips() {

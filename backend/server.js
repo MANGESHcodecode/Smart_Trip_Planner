@@ -3,9 +3,18 @@ const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const OpenAI = require('openai');
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// ─── AI Client Initializations ────────────────────────────
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 app.use(cors({ origin: '*', credentials: true }));
 app.use(express.json());
 
@@ -60,7 +69,7 @@ app.get('/api/auth/me', authenticateToken, (req, res) => res.json({ user: req.us
 //  TRIPS
 // ════════════════════════════════════════════════════════
 app.post('/api/trips', authenticateToken, (req, res) => {
-  const { title, source, destination, date, travellers, budget, notes } = req.body;
+  const { title, source, destination, date, travellers, budget, notes, itinerary, summary } = req.body;
   if (!source || !destination || !date) return res.status(400).json({ error: 'Source, destination and date required' });
   const trip = {
     id: tripIdCounter++,
@@ -72,6 +81,8 @@ app.post('/api/trips', authenticateToken, (req, res) => {
     travellers: travellers || 1,
     budget: budget || '',
     notes: notes || '',
+    itinerary: itinerary || null,
+    summary: summary || null,
     status: 'planned',
     createdAt: new Date(),
     source_coords: getCoords(source).join(','),
@@ -431,14 +442,112 @@ app.get('/api/packages', (req, res) => {
 });
 
 app.post('/api/itinerary/generate', authenticateToken, async (req, res) => {
-  const { packageId, budget, travellers, accommodation, days, source } = req.body;
+  const { packageId, budget, travellers, accommodation, days, source, destination } = req.body;
   const pkg = PACKAGES.find(p => p.id === packageId);
-  if (!pkg && !source) return res.status(400).json({ error: 'Package or Source/Destination required' });
+  if (!pkg && !source && !destination) return res.status(400).json({ error: 'Package or Source/Destination required' });
 
-  const dest = pkg ? pkg.cities[pkg.cities.length - 1] : req.body.destination;
+  const finalDest = pkg ? pkg.cities[pkg.cities.length - 1] : destination;
+  const finalSrc = source || 'Mumbai';
   const tripDays = days || (pkg ? parseInt(pkg.duration) : 3);
 
-  // Simple logic for transport suggestion
+  const prompt = `Generate a highly detailed, varied, and location-specific Indian travel itinerary for a trip from ${finalSrc} to ${finalDest}.
+      
+  Trip Details:
+  - Duration: ${tripDays} days
+  - Budget: ₹${budget} total for ${travellers} person(s)
+  - Accommodation: ${accommodation}
+  - Travelers: ${travellers}
+  ${pkg ? `- This is based on the "${pkg.name}" package which includes: ${pkg.cities.join(', ')}` : ''}
+
+  Instructions:
+  1. Each day MUST have unique and realistic activities specific to the cities being visited.
+  2. Do NOT repeat the same activities (like "Breakfast at Hotel") for every day in the same way; vary the descriptions.
+  3. Include specific famous landmarks, local eateries, and cultural experiences relevant to ${finalDest}${pkg ? ' and ' + pkg.cities.join(', ') : ''}.
+  4. Ensure the transport suggestion is logical for the distance between ${finalSrc} and ${finalDest}.
+
+  Return ONLY a JSON object with this exact structure:
+  {
+    "suggestedTransport": "Flight or Train",
+    "transportReason": "Short specific explanation based on distance and budget",
+    "itinerary": [
+      {
+        "day": 1,
+        "title": "Day 1: [Specific Title for Day 1]",
+        "events": [
+          { "time": "08:30 AM", "activity": "[Detailed specific activity]" },
+          { "time": "11:00 AM", "activity": "[Specific landmark visit]" },
+          { "time": "01:30 PM", "activity": "[Lunch at a specific type of local place]" },
+          { "time": "04:30 PM", "activity": "[Afternoon specific experience]" },
+          { "time": "08:00 PM", "activity": "[Dinner recommendation]" }
+        ]
+      }
+    ]
+  }`;
+
+  // 1. Try OpenAI First
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      console.log(`[AI] Attempting OpenAI Itinerary for: ${finalSrc} -> ${finalDest}`);
+      const completion = await openai.chat.completions.create({
+        messages: [
+          { role: "system", content: "You are a professional Indian travel consultant who provides highly detailed and unique travel plans. You always return valid JSON." },
+          { role: "user", content: prompt }
+        ],
+        model: "gpt-4o-mini",
+        response_format: { type: "json_object" }
+      });
+
+      const aiData = JSON.parse(completion.choices[0].message.content);
+      console.log("[AI] OpenAI Itinerary generated successfully");
+      
+      return res.json({
+        summary: {
+          source: finalSrc, destination: finalDest, days: tripDays, travellers, budget, accommodation,
+          suggestedTransport: aiData.suggestedTransport, transportReason: aiData.transportReason, isAI: true, provider: 'OpenAI'
+        },
+        itinerary: aiData.itinerary
+      });
+    } catch (err) {
+      console.error('[AI] OpenAI Error:', err.message);
+    }
+  }
+
+  // 2. Try Gemini (Free Tier) Second
+  if (genAI) {
+    const geminiModels = [
+      "gemini-1.5-flash", 
+      "gemini-1.5-flash-latest",
+      "gemini-pro", 
+      "gemini-1.0-pro"
+    ];
+    for (const modelName of geminiModels) {
+      try {
+        console.log(`[AI] Attempting Gemini Itinerary with model: ${modelName}`);
+        const model = genAI.getGenerativeModel({ model: modelName });
+        
+        const result = await model.generateContent(prompt + "\nIMPORTANT: Return ONLY valid JSON, no markdown formatting.");
+        const text = result.response.text();
+        
+        const cleanedJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
+        const aiData = JSON.parse(cleanedJson);
+        
+        console.log(`[AI] Gemini (${modelName}) Itinerary generated successfully`);
+
+        return res.json({
+          summary: {
+            source: finalSrc, destination: finalDest, days: tripDays, travellers, budget, accommodation,
+            suggestedTransport: aiData.suggestedTransport, transportReason: aiData.transportReason, isAI: true, provider: `Gemini (${modelName})`
+          },
+          itinerary: aiData.itinerary
+        });
+      } catch (err) {
+        console.warn(`[AI] Gemini model ${modelName} failed:`, err.message);
+      }
+    }
+    console.error('[AI] All Gemini models failed.');
+  }
+
+  // Fallback Manual Logic (More Dynamic)
   let transport = 'Train';
   let transportReason = 'Budget-friendly and scenic.';
   if (budget / travellers > 10000) {
@@ -446,34 +555,60 @@ app.post('/api/itinerary/generate', authenticateToken, async (req, res) => {
     transportReason = 'Faster and fits your premium budget.';
   }
 
-  // Generate day-by-day itinerary
-  const itinerary = [];
-  const events = [
-    { time: '09:00 AM', activity: 'Breakfast at Hotel' },
-    { time: '11:00 AM', activity: 'Local Sightseeing & Landmarks' },
-    { time: '01:30 PM', activity: 'Lunch at famous local eatery' },
-    { time: '04:00 PM', activity: 'Cultural Experience / Market Visit' },
-    { time: '08:00 PM', activity: 'Dinner & Relaxation' }
+  const activityPool = [
+    [
+      { time: '09:00 AM', activity: 'Breakfast at a local heritage cafe' },
+      { time: '11:00 AM', activity: 'Visit to the most famous local landmark/monument' },
+      { time: '01:30 PM', activity: 'Lunch at a highly-rated traditional restaurant' },
+      { time: '04:00 PM', activity: 'Exploring the local markets and shopping for souvenirs' },
+      { time: '08:00 PM', activity: 'Dinner featuring regional specialties' }
+    ],
+    [
+      { time: '08:30 AM', activity: 'Morning walk through a scenic park or garden' },
+      { time: '10:30 AM', activity: 'Visit to a local museum or art gallery' },
+      { time: '01:00 PM', activity: 'Quick lunch at a popular street food hub' },
+      { time: '03:30 PM', activity: 'Guided tour of historical sites or spiritual places' },
+      { time: '07:30 PM', activity: 'Evening cultural show or light & sound performance' }
+    ],
+    [
+      { time: '09:30 AM', activity: 'Leisurely breakfast and local area exploration' },
+      { time: '11:30 AM', activity: 'Visit to nearby architectural wonders' },
+      { time: '02:00 PM', activity: 'Relaxing lunch with a view' },
+      { time: '04:30 PM', activity: 'Photography session at scenic viewpoints' },
+      { time: '08:30 PM', activity: 'Fine dining experience at a top-rated hotel' }
+    ],
+    [
+      { time: '08:00 AM', activity: 'Early morning excursion to outskirts or nature spots' },
+      { time: '11:00 AM', activity: 'Workshop or interaction with local artisans' },
+      { time: '01:30 PM', activity: 'Authentic home-style meal at a local\'s place' },
+      { time: '04:00 PM', activity: 'Boating or evening stroll by the riverside/lake' },
+      { time: '07:00 PM', activity: 'Casual dinner and packing for the next day' }
+    ]
   ];
 
+  const itinerary = [];
   for (let i = 1; i <= tripDays; i++) {
+    const dayCity = pkg ? pkg.cities[(i - 1) % pkg.cities.length] : finalDest;
+    const activities = activityPool[(i - 1) % activityPool.length];
+    
     itinerary.push({
       day: i,
-      title: `Day ${i}: Exploring ${pkg ? pkg.cities[(i-1) % pkg.cities.length] : dest}`,
-      events: events.map(e => ({ ...e }))
+      title: `Day ${i}: ${i === 1 ? 'Arrival & ' : ''}Exploring ${dayCity}`,
+      events: activities.map(e => ({ ...e }))
     });
   }
 
   res.json({
     summary: {
-      source: source || 'Your Location',
-      destination: dest,
+      source: finalSrc,
+      destination: finalDest,
       days: tripDays,
       travellers,
       budget,
       accommodation,
       suggestedTransport: transport,
-      transportReason
+      transportReason,
+      isAI: false // Mark as fallback
     },
     itinerary
   });
@@ -504,6 +639,7 @@ app.get('/api/health', (req, res) => {
     rail_api_key_set:  !!RAIL_API_KEY,
     rail_api_key_preview: RAIL_API_KEY ? RAIL_API_KEY.substring(0,12)+'...' : 'NOT SET',
     openai_key_set:    !!process.env.OPENAI_API_KEY,
+    gemini_key_set:    !!process.env.GEMINI_API_KEY,
     users:             users.length,
     trips:             trips.length,
     routes_in_db:      Object.keys(ROUTE_DB).length,
