@@ -322,23 +322,120 @@ app.post('/api/trains/search', authenticateToken, async (req, res) => {
     console.warn('RAIL_API_KEY not set in .env');
   }
 
-  // ── Step 2: Fallback to our verified route database ───
-  const dbTrains = lookupRouteDB(source, destination);
-  if (dbTrains && dbTrains.length > 0) {
-    console.log('Using route DB fallback:', dbTrains.length, 'trains');
-    return res.json({ trains: dbTrains, source, destination, date, travellers, dataSource: 'database', srcCode, dstCode });
+  // ── Step 2: Try AI Generation Fallback (OpenAI / Gemini) ──
+  console.log(`[AI] Attempting AI Train Search for: ${source} -> ${destination}`);
+
+  const prompt = `Generate a realistic Indian train schedule between ${source} and ${destination} for the date ${date}.
+Provide 4-5 train options. Return ONLY a JSON object with this exact structure:
+{
+  "trains": [
+    {
+      "train_number": "Train Number (e.g. 12951)",
+      "train_name": "Train Name (e.g. Mumbai Rajdhani)",
+      "train_type": "Express, Rajdhani, Shatabdi, Superfast, Mail, Duronto, or Jan Shatabdi",
+      "departure": "HH:MM",
+      "arrival": "HH:MM",
+      "duration": "Duration (e.g. 14h 55m)",
+      "runs_on": ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
+      "pantry": true,
+      "distance_km": Distance in km (e.g. 1384),
+      "classes": [
+        { "name": "1A, 2A, 3A, SL, CC, etc", "fare": 1500 }
+      ]
+    }
+  ]
+}
+Return only the valid JSON, no markdown formatting or extra text.`;
+
+  let parsedTrains = null;
+  let aiProvider = '';
+
+  // 1. Try OpenAI
+  if (process.env.OPENAI_API_KEY && !parsedTrains) {
+    try {
+      const completion = await openai.chat.completions.create({
+        messages: [
+          { role: "system", content: "You are a professional Indian Railway API simulator that strictly outputs JSON data matching the requested schema." },
+          { role: "user", content: prompt }
+        ],
+        model: "gpt-4o-mini",
+        response_format: { type: "json_object" }
+      });
+      parsedTrains = JSON.parse(completion.choices[0].message.content).trains;
+      aiProvider = 'openai';
+    } catch (err) {
+      console.warn('[AI] OpenAI Train Search Error:', err.message);
+    }
   }
 
-  // ── Step 3: Generic demo trains ───────────────────────
-  console.log('Using generic demo fallback');
+  // 2. Try Gemini
+  if (genAI && !parsedTrains) {
+    const geminiModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"];
+    for (const modelName of geminiModels) {
+      if (parsedTrains) break;
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const result = await model.generateContent(prompt + "\nIMPORTANT: Return ONLY valid JSON, no markdown formatting.");
+        const text = result.response.text();
+        const cleanedJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
+        parsedTrains = JSON.parse(cleanedJson).trains;
+        aiProvider = `gemini (${modelName})`;
+      } catch (err) {
+        console.warn(`[AI] Gemini ${modelName} failed:`, err.message);
+      }
+    }
+  }
+
+  // Map AI data to include coordinates, static station codes, and mocked availability
+  if (parsedTrains && Array.isArray(parsedTrains) && parsedTrains.length > 0) {
+    const aiTrains = parsedTrains.map((t, idx) => {
+      // Create random availability for classes
+      const classes = (t.classes || []).map(c => ({
+        ...c,
+        available: Math.floor(Math.random() * 160) > 40 ? Math.floor(Math.random() * 180) + 10 : 0
+      }));
+
+      // Make sure pantries are booleans
+      const pantry = typeof t.pantry === 'boolean' ? t.pantry : ['Rajdhani','Duronto','Shatabdi'].includes(t.train_type);
+
+      return {
+        ...t,
+        train_number: String(t.train_number || '120'+idx),
+        train_name: t.train_name || 'Express',
+        train_type: t.train_type || 'Express',
+        source,
+        source_code: srcCode,
+        destination,
+        destination_code: dstCode,
+        departure: t.departure || '--:--',
+        arrival: t.arrival || '--:--',
+        duration: t.duration || '--h --m',
+        runs_on: t.runs_on || ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],
+        pantry,
+        distance_km: t.distance_km || 500,
+        source_coords: getCoords(source).join(','),
+        dest_coords: getCoords(destination).join(','),
+        classes
+      };
+    });
+
+    console.log(`✅ AI generated ${aiTrains.length} trains using ${aiProvider}`);
+    return res.json({ trains: aiTrains, source, destination, date, travellers, dataSource: 'ai (' + aiProvider + ')', srcCode, dstCode });
+  }
+
+  // ── Step 3: Generic demo trains (if AI completely fails) ──
+  console.log('AI generation failed. Using generic demo fallback');
   const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const fallback = [
     { train_number:'12001', train_name:`${source} ${destination} Superfast`, train_type:'Superfast', source, source_code:srcCode, destination, destination_code:dstCode, departure:'06:30', arrival:'14:00', duration:'7h 30m', runs_on:days, classes:[{name:'2A',fare:1680,available:24},{name:'3A',fare:1148,available:72},{name:'SL',fare:415,available:180}], pantry:true, distance_km:600 },
-    { train_number:'12002', train_name:`${source} Rajdhani Express`,         train_type:'Rajdhani',  source, source_code:srcCode, destination, destination_code:dstCode, departure:'17:00', arrival:'07:00', duration:'14h 00m', runs_on:days, classes:[{name:'1A',fare:3960,available:6},{name:'2A',fare:2340,available:28},{name:'3A',fare:1608,available:0}], pantry:true, distance_km:600 },
-    { train_number:'12003', train_name:`${destination} Mail`,                train_type:'Mail',      source, source_code:srcCode, destination, destination_code:dstCode, departure:'22:00', arrival:'09:30', duration:'11h 30m', runs_on:days, classes:[{name:'2A',fare:1540,available:10},{name:'3A',fare:1052,available:48},{name:'SL',fare:380,available:145}], pantry:false, distance_km:600 },
-    { train_number:'12004', train_name:`${source} ${destination} Express`,   train_type:'Express',   source, source_code:srcCode, destination, destination_code:dstCode, departure:'08:00', arrival:'17:30', duration:'9h 30m',  runs_on:days.slice(0,5), classes:[{name:'3A',fare:1020,available:55},{name:'SL',fare:368,available:200}], pantry:false, distance_km:600 },
+    { train_number:'12002', train_name:`${source} Rajdhani Express`,         train_type:'Rajdhani',  source, source_code:srcCode, destination, destination_code:dstCode, departure:'17:00', arrival:'07:00', duration:'14h 00m', runs_on:days, classes:[{name:'1A',fare:3960,available:6},{name:'2A',fare:2340,available:28},{name:'3A',fare:1608,available:0}], pantry:true, distance_km:600 }
   ];
-  res.json({ trains: fallback, source, destination, date, travellers, dataSource: 'demo', srcCode, dstCode });
+  return res.json({ trains: fallback, source, destination, date, travellers, dataSource: 'demo', srcCode, dstCode });
+});
+
+// ── Exhaustive all stations list (8400+ stations) ────────
+app.get('/api/stations/all', authenticateToken, (req, res) => {
+  res.sendFile(__dirname + '/all-stations.json');
 });
 
 // ── Station code search endpoint (for autocomplete) ──────
@@ -354,76 +451,6 @@ app.get('/api/stations/search', authenticateToken, async (req, res) => {
     res.json({ stations: [] });
   }
 });
-
-// ════════════════════════════════════════════════════════
-//  ROUTE DATABASE FALLBACK (verified real trains)
-// ════════════════════════════════════════════════════════
-const ROUTE_DB = {
-  'MUMBAI|PUNE': [
-    { n:'12127',name:'Intercity Express',   type:'Intercity', dep:'06:35',arr:'09:45',dur:'3h 10m',km:192,pantry:false,cls:[{n:'CC',f:245,a:110},{n:'2S',f:90,a:200}],         days:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] },
-    { n:'12123',name:'Deccan Queen',         type:'Superfast', dep:'17:10',arr:'20:25',dur:'3h 15m',km:192,pantry:true, cls:[{n:'FC',f:485,a:30},{n:'CC',f:265,a:85},{n:'2S',f:95,a:180}], days:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] },
-    { n:'11007',name:'Deccan Express',       type:'Express',   dep:'07:15',arr:'11:00',dur:'3h 45m',km:197,pantry:false,cls:[{n:'SL',f:175,a:220},{n:'2S',f:80,a:300}],        days:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] },
-    { n:'12125',name:'Pragati Express',      type:'Express',   dep:'05:55',arr:'08:55',dur:'3h 00m',km:192,pantry:false,cls:[{n:'CC',f:240,a:95},{n:'2S',f:88,a:160}],         days:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] },
-  ],
-  'MUMBAI|DELHI': [
-    { n:'12951',name:'Mumbai Rajdhani',      type:'Rajdhani',  dep:'17:40',arr:'08:35',dur:'14h 55m',km:1384,pantry:true, cls:[{n:'1A',f:4560,a:8},{n:'2A',f:2680,a:32},{n:'3A',f:1850,a:0}], days:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] },
-    { n:'12137',name:'Punjab Mail',          type:'Mail',      dep:'19:35',arr:'10:55',dur:'15h 20m',km:1541,pantry:false,cls:[{n:'1A',f:3740,a:6},{n:'2A',f:2180,a:22},{n:'3A',f:1490,a:88},{n:'SL',f:540,a:180}], days:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] },
-    { n:'12953',name:'August Kranti Raj.',   type:'Rajdhani',  dep:'17:40',arr:'10:55',dur:'17h 15m',km:1384,pantry:true, cls:[{n:'1A',f:4780,a:4},{n:'2A',f:2820,a:18},{n:'3A',f:1960,a:45}], days:['Mon','Wed','Fri'] },
-  ],
-  'MUMBAI|NAGPUR': [
-    { n:'12289',name:'Nagpur Duronto',       type:'Duronto',   dep:'22:00',arr:'09:40',dur:'11h 40m',km:836,pantry:true, cls:[{n:'1A',f:3280,a:5},{n:'2A',f:1960,a:28},{n:'3A',f:1340,a:64}], days:['Mon','Wed','Fri'] },
-    { n:'11039',name:'Maharashtra Express',  type:'Express',   dep:'21:20',arr:'11:25',dur:'14h 05m',km:873,pantry:false,cls:[{n:'2A',f:1640,a:18},{n:'3A',f:1120,a:72},{n:'SL',f:405,a:195}], days:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] },
-    { n:'12105',name:'Vidarbha Express',     type:'Express',   dep:'06:00',arr:'18:45',dur:'12h 45m',km:836,pantry:false,cls:[{n:'2A',f:1580,a:14},{n:'3A',f:1080,a:56},{n:'SL',f:390,a:0}],  days:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] },
-  ],
-  'PUNE|NAGPUR': [
-    { n:'12135',name:'Pune Nagpur Express',  type:'Express',   dep:'17:55',arr:'07:05',dur:'13h 10m',km:671,pantry:false,cls:[{n:'2A',f:1480,a:20},{n:'3A',f:1010,a:78},{n:'SL',f:365,a:185}], days:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] },
-    { n:'12297',name:'Pune Ahmedabad Exp',   type:'Express',   dep:'21:55',arr:'12:30',dur:'14h 35m',km:671,pantry:false,cls:[{n:'2A',f:1520,a:12},{n:'3A',f:1040,a:54},{n:'SL',f:375,a:140}], days:['Mon','Wed','Fri','Sun'] },
-    { n:'11025',name:'Bhusawal Express',     type:'Express',   dep:'23:40',arr:'14:15',dur:'14h 35m',km:735,pantry:false,cls:[{n:'SL',f:355,a:0},{n:'3A',f:980,a:36}],         days:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] },
-  ],
-  'DELHI|KOLKATA': [
-    { n:'12301',name:'Howrah Rajdhani',      type:'Rajdhani',  dep:'16:55',arr:'09:55',dur:'17h 00m',km:1441,pantry:true, cls:[{n:'1A',f:5020,a:6},{n:'2A',f:2960,a:24},{n:'3A',f:2040,a:78}], days:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] },
-    { n:'12303',name:'Poorva Express',       type:'Superfast', dep:'08:00',arr:'06:20',dur:'22h 20m',km:1531,pantry:false,cls:[{n:'2A',f:2280,a:16},{n:'3A',f:1560,a:60},{n:'SL',f:570,a:160}], days:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] },
-  ],
-  'BANGALORE|CHENNAI': [
-    { n:'12007',name:'Shatabdi Express',     type:'Shatabdi',  dep:'06:00',arr:'11:00',dur:'5h 00m',km:362,pantry:true, cls:[{n:'EC',f:1380,a:18},{n:'CC',f:685,a:72}],         days:['Mon','Tue','Wed','Thu','Fri','Sat'] },
-    { n:'12657',name:'KSR Bengaluru Mail',   type:'Mail',      dep:'20:40',arr:'04:10',dur:'7h 30m',km:362,pantry:false,cls:[{n:'2A',f:1460,a:20},{n:'3A',f:1000,a:58},{n:'SL',f:360,a:150}], days:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] },
-  ],
-  'DELHI|JAIPUR': [
-    { n:'12015',name:'Ajmer Shatabdi',       type:'Shatabdi',  dep:'06:05',arr:'10:40',dur:'4h 35m',km:308,pantry:true, cls:[{n:'EC',f:1200,a:14},{n:'CC',f:540,a:68}],         days:['Mon','Tue','Wed','Thu','Fri','Sat'] },
-    { n:'12413',name:'Ajmer Rajdhani',       type:'Rajdhani',  dep:'19:50',arr:'00:15',dur:'4h 25m',km:308,pantry:true, cls:[{n:'1A',f:2680,a:6},{n:'2A',f:1580,a:22},{n:'3A',f:1080,a:64}], days:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] },
-  ],
-  'MUMBAI|GOA': [
-    { n:'10103',name:'Mandovi Express',      type:'Express',   dep:'07:10',arr:'18:00',dur:'10h 50m',km:593,pantry:false,cls:[{n:'2A',f:1420,a:16},{n:'3A',f:968,a:58},{n:'SL',f:348,a:180}], days:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] },
-    { n:'12051',name:'Jan Shatabdi Exp',     type:'Shatabdi',  dep:'05:25',arr:'15:00',dur:'9h 35m',km:593,pantry:true, cls:[{n:'CC',f:720,a:45},{n:'2S',f:265,a:140}],         days:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] },
-    { n:'10111',name:'Konkan Kanya Exp',     type:'Express',   dep:'22:45',arr:'11:10',dur:'12h 25m',km:593,pantry:false,cls:[{n:'2A',f:1340,a:22},{n:'3A',f:912,a:76},{n:'SL',f:328,a:200}], days:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] },
-  ],
-};
-
-function lookupRouteDB(src, dst) {
-  const s = src.toUpperCase().trim();
-  const d = dst.toUpperCase().trim();
-  const found = ROUTE_DB[`${s}|${d}`] || ROUTE_DB[`${d}|${s}`];
-  const rev   = !ROUTE_DB[`${s}|${d}`] && !!ROUTE_DB[`${d}|${s}`];
-  if (!found) return null;
-  return found.map(t => ({
-    train_number:    t.n,
-    train_name:      t.name,
-    train_type:      t.type,
-    source:          rev ? dst : src,
-    source_code:     getStationCode(rev ? dst : src),
-    destination:     rev ? src : dst,
-    destination_code:getStationCode(rev ? src : dst),
-    departure:       rev ? t.arr : t.dep,
-    arrival:         rev ? t.dep : t.arr,
-    duration:        t.dur,
-    runs_on:         t.days,
-    classes:         t.cls.map(c => ({ name:c.n, fare:c.f, available:c.a })),
-    pantry:          t.pantry,
-    distance_km:     t.km,
-    source_coords:   getCoords(rev ? dst : src).join(','),
-    dest_coords:     getCoords(rev ? src : dst).join(','),
-  }));
-}
 
 // ════════════════════════════════════════════════════════
 //  PACKAGES & ITINERARY
@@ -515,10 +542,10 @@ app.post('/api/itinerary/generate', authenticateToken, async (req, res) => {
   // 2. Try Gemini (Free Tier) Second
   if (genAI) {
     const geminiModels = [
-      "gemini-1.5-flash", 
-      "gemini-1.5-flash-latest",
-      "gemini-pro", 
-      "gemini-1.0-pro"
+      "gemini-2.5-flash", 
+      "gemini-2.0-flash",
+      "gemini-flash-latest",
+      "gemini-pro-latest"
     ];
     for (const modelName of geminiModels) {
       try {
@@ -642,7 +669,7 @@ app.get('/api/health', (req, res) => {
     gemini_key_set:    !!process.env.GEMINI_API_KEY,
     users:             users.length,
     trips:             trips.length,
-    routes_in_db:      Object.keys(ROUTE_DB).length,
+    routes_in_db:      0,
     station_codes:     Object.keys(STATION_CODES).length,
     packages_count:    PACKAGES.length
   });

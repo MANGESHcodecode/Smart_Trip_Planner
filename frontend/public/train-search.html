@@ -66,11 +66,7 @@
         <input class="form-control" type="date" id="dt"/>
       </div>
     </div>
-    <datalist id="cl">
-      <option value="Mumbai"/><option value="Delhi"/><option value="Kolkata"/><option value="Chennai"/>
-      <option value="Bangalore"/><option value="Hyderabad"/><option value="Pune"/><option value="Jaipur"/>
-      <option value="Lucknow"/><option value="Ahmedabad"/><option value="Goa"/><option value="Varanasi"/>
-    </datalist>
+    <datalist id="cl"></datalist>
     <button class="btn btn-primary btn-lg w-full" id="sBtn" onclick="doSearch()" style="margin-top:4px">
       Search Trains
     </button>
@@ -92,6 +88,27 @@
   if (p.get('dst')) document.getElementById('dst').value = p.get('dst');
   if (p.get('date')) document.getElementById('dt').value = p.get('date');
   if (p.get('src') && p.get('dst')) doSearch();
+
+  // Load all 8400+ stations into datalist for maximum coverage
+  async function loadStations() {
+    try {
+      const { stations } = await api.get('/stations/all');
+      const dl = document.getElementById('cl');
+      if (stations && stations.length > 0) {
+        // Use a fragment to render 8000 items quickly
+        const frag = document.createDocumentFragment();
+        stations.forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = s;
+          frag.appendChild(opt);
+        });
+        dl.appendChild(frag);
+      }
+    } catch(err) {
+      console.warn('Could not load exhaustive stations list', err);
+    }
+  }
+  loadStations();
 
   async function doSearch() {
     const src = document.getElementById('src').value.trim();
