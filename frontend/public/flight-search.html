@@ -107,11 +107,17 @@
     
     document.getElementById('flightResults').innerHTML = `<div class="ai-loading"><div class="loader-ring"></div><p>Fetching best flight deals...</p></div>`;
 
+    startAILoader('Scanning all major Indian airlines...');
+
     try {
       const { flights } = await api.post('/flights/search', { source, destination, date });
       renderFlights(flights, date);
-    } catch(e) { showToast(e.message, 'error'); }
-    finally { btn.disabled = false; btn.innerHTML = '🔍 Search Flights →'; }
+    } catch(e) { 
+      showToast(e.message, 'error'); 
+    } finally { 
+      btn.disabled = false; btn.innerHTML = '🔍 Search Flights →'; 
+      stopAILoader();
+    }
   }
 
   function renderFlights(flights, date) {

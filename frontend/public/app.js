@@ -46,7 +46,14 @@ const api = {
 
     const res = await fetch(`${API_BASE}${endpoint}`, opts);
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Something went wrong');
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        Auth.clearSession();
+        window.location.href = '/login.html';
+        return Promise.reject(new Error(data.error || 'Session expired. Please log in again.'));
+      }
+      throw new Error(data.error || 'Something went wrong');
+    }
     return data;
   },
   get:    (ep)         => api.request('GET',    ep),
@@ -67,6 +74,40 @@ function showToast(msg, type = 'info') {
   toast.textContent = msg;
   container.appendChild(toast);
   setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, 3500);
+}
+
+// ─── Global AI Loader ──────────────────────────────────────
+function startAILoader(message = 'AI is crafting your journey...') {
+  let loader = document.getElementById('ai-pulse-loader');
+  if (!loader) {
+    loader = document.createElement('div');
+    loader.id = 'ai-pulse-loader';
+    loader.className = 'ai-loader-overlay';
+    loader.innerHTML = `
+      <div class="ai-loader-content">
+        <div class="train-loader-container">
+          <div class="train-icon">🚂</div>
+          <div class="train-track"></div>
+        </div>
+        <div class="ai-loader-text">
+          <h3 id="ai-loader-msg" class="font-display"></h3>
+          <p>Please wait, this might take a few seconds...</p>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(loader);
+  }
+  document.getElementById('ai-loader-msg').textContent = message;
+  // Trigger layout to ensure animation happens
+  void loader.offsetWidth;
+  loader.classList.add('active');
+}
+
+function stopAILoader() {
+  const loader = document.getElementById('ai-pulse-loader');
+  if (loader) {
+    loader.classList.remove('active');
+  }
 }
 
 // ─── Navbar Renderer ───────────────────────────────────────

@@ -123,6 +123,8 @@
 
     document.getElementById('results').innerHTML = `<div class="ai-loading"><div class="ring"></div><p>Searching trains: <strong>${src}</strong> → <strong>${dst}</strong></p></div>`;
 
+    startAILoader('Checking live IRCTC schedules & AI routes...');
+
     try {
       const { trains } = await api.post('/trains/search', { source:src, destination:dst, date:dt, travellers:1 });
       renderTrains(trains, src, dst, dt);
@@ -130,6 +132,7 @@
       document.getElementById('results').innerHTML = `<div style="background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);border-radius:12px;padding:20px;text-align:center;color:var(--red)">${e.message}</div>`;
     } finally {
       btn.disabled=false; btn.innerHTML='Search Trains';
+      stopAILoader();
     }
   }
 

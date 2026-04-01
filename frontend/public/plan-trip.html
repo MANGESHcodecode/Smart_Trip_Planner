@@ -325,6 +325,8 @@
     const btn = document.querySelector('#step2 .btn-primary');
     btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Generating...';
 
+    startAILoader('Designing your perfect full-trip itinerary...');
+
     try {
       const payload = {
         packageId: selectedPackage?.id,
@@ -341,7 +343,10 @@
       console.error('Itinerary generation error:', e);
       showToast('Error: ' + e.message, 'error'); 
     }
-    finally { btn.disabled = false; btn.innerHTML = 'Generate Full Trip Summary ✨'; }
+    finally { 
+      btn.disabled = false; btn.innerHTML = 'Generate Full Trip Summary ✨'; 
+      stopAILoader();
+    }
   }
 
   function renderSummary(data) {
@@ -404,6 +409,8 @@
     document.getElementById('transportResults').innerHTML = `<div class="ai-loading"><div class="loader-ring"></div><p>Searching ${type}s...</p></div>`;
     window.scrollTo({ top: document.getElementById('transportResults').offsetTop - 100, behavior: 'smooth' });
 
+    startAILoader(`Searching the best ${type} routes via AI...`);
+
     try {
       if (type === 'Flight') {
         const { flights } = await api.post('/flights/search', { source: src, destination: dst, date });
@@ -412,7 +419,11 @@
         const { trains } = await api.post('/trains/search', { source: src, destination: dst, date, travellers });
         renderTrains(trains, src, dst, date, travellers);
       }
-    } catch(e) { showToast(e.message, 'error'); }
+    } catch(e) { 
+      showToast(e.message, 'error'); 
+    } finally {
+      stopAILoader();
+    }
   }
 
   function renderFlights(flights, src, dst, date) {
