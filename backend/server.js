@@ -186,8 +186,14 @@ const STATION_COORDS = {
 };
 
 function getCoords(cityName) {
-  const upper = cityName.toUpperCase().trim();
-  return STATION_COORDS[upper] || [20.5937, 78.9629]; // fallback: center of India
+  if (!cityName) return [];
+  // Basic cleanup: if they select "PUNE - PUNE (PUNE JUNCTION)", extract just "PUNE"
+  let cleanName = cityName;
+  if (cleanName.includes('-')) {
+    cleanName = cleanName.split('-')[0];
+  }
+  const upper = cleanName.toUpperCase().trim();
+  return STATION_COORDS[upper] || []; // return empty if unknown
 }
 
 // Convert city name to station code
